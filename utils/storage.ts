@@ -34,7 +34,7 @@ export const storageService = {
     }
   },
 
-  // ✅ Nouvelle méthode pour sauvegarder une liste complète
+  // ✅ Réécrit toute la liste
   async saveFeedings(feedings: Feeding[]): Promise<void> {
     try {
       await AsyncStorage.setItem(FEEDINGS_KEY, JSON.stringify(feedings));
@@ -73,7 +73,7 @@ export const storageService = {
 
   async saveActiveSession(session: ActiveSession | null): Promise<void> {
     try {
-      if (session === null) {
+      if (!session) {
         await AsyncStorage.removeItem(ACTIVE_SESSION_KEY);
       } else {
         await AsyncStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(session));
@@ -101,7 +101,7 @@ export const storageService = {
     }
   },
 
-  // ✅ Supprimer une tétée par id
+  // ✅ SUPPRIMER une tétée
   async deleteFeeding(id: string): Promise<Feeding[]> {
     const feedings = await this.getFeedings();
     const updated = feedings.filter(f => f.id !== id);
@@ -109,12 +109,10 @@ export const storageService = {
     return updated;
   },
 
-  // ✅ Mettre à jour une tétée
+  // ✅ METTRE À JOUR une tétée
   async updateFeeding(updatedFeeding: Feeding): Promise<Feeding[]> {
     const feedings = await this.getFeedings();
-    const updated = feedings.map(f =>
-      f.id === updatedFeeding.id ? updatedFeeding : f,
-    );
+    const updated = feedings.map(f => (f.id === updatedFeeding.id ? updatedFeeding : f));
     await this.saveFeedings(updated);
     return updated;
   },
