@@ -15,6 +15,8 @@ interface FeedingContextType {
   stopFeeding: (quantityMl?: number) => Promise<void>;
   updateSettings: (newSettings: Settings) => Promise<void>;
   refreshData: () => Promise<void>;
+  deleteFeeding: (id: string) => Promise<void>;
+  updateFeeding: (feeding: Feeding) => Promise<void>;
 }
 
 const FeedingContext = createContext<FeedingContextType | undefined>(undefined);
@@ -132,6 +134,16 @@ export function FeedingProvider({ children }: { children: React.ReactNode }) {
     await loadData();
   };
 
+  const deleteFeeding = async (id: string) => {
+    const updated = await storageService.deleteFeeding(id);
+    setFeedings(updated);
+  };
+
+  const updateFeeding = async (feeding: Feeding) => {
+    const updated = await storageService.updateFeeding(feeding);
+    setFeedings(updated);
+  };
+
   return (
     <FeedingContext.Provider
       value={{
@@ -145,6 +157,8 @@ export function FeedingProvider({ children }: { children: React.ReactNode }) {
         stopFeeding,
         updateSettings,
         refreshData,
+        deleteFeeding,
+        updateFeeding,
       }}
     >
       {children}
