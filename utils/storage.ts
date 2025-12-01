@@ -34,6 +34,15 @@ export const storageService = {
     }
   },
 
+  // ✅ Nouvelle méthode pour sauvegarder une liste complète
+  async saveFeedings(feedings: Feeding[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(FEEDINGS_KEY, JSON.stringify(feedings));
+    } catch (error) {
+      console.error('Error saving feedings list:', error);
+    }
+  },
+
   async getSettings(): Promise<Settings> {
     try {
       const data = await AsyncStorage.getItem(SETTINGS_KEY);
@@ -90,5 +99,23 @@ export const storageService = {
     } catch (error) {
       console.error('Error saving last side:', error);
     }
+  },
+
+  // ✅ Supprimer une tétée par id
+  async deleteFeeding(id: string): Promise<Feeding[]> {
+    const feedings = await this.getFeedings();
+    const updated = feedings.filter(f => f.id !== id);
+    await this.saveFeedings(updated);
+    return updated;
+  },
+
+  // ✅ Mettre à jour une tétée
+  async updateFeeding(updatedFeeding: Feeding): Promise<Feeding[]> {
+    const feedings = await this.getFeedings();
+    const updated = feedings.map(f =>
+      f.id === updatedFeeding.id ? updatedFeeding : f,
+    );
+    await this.saveFeedings(updated);
+    return updated;
   },
 };
