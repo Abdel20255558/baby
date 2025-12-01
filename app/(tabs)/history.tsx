@@ -28,10 +28,13 @@ interface EditFeedingModalProps {
   onSave: (feeding: Feeding) => void;
 }
 
-// ✅ Petite modale pour modifier type + quantité
+// ✅ Modale de modification + possibilité de CONTINUER la tétée
 function EditFeedingModal({ visible, feeding, onClose, onSave }: EditFeedingModalProps) {
   const [type, setType] = useState<FeedingType>('left');
   const [quantity, setQuantity] = useState('');
+  const [isContinuing, setIsContinuing] = useState(false);
+  const [continueStart, setContinueStart] = useState<Date | null>(null);
+  const [continueElapsed, setContinueElapsed] = useState(0); // en secondes
 
   useEffect(() => {
     if (feeding) {
@@ -39,12 +42,33 @@ function EditFeedingModal({ visible, feeding, onClose, onSave }: EditFeedingModa
       setQuantity(
         feeding.type === 'bottle' && feeding.quantityMl ? feeding.quantityMl.toString() : ''
       );
+      setIsContinuing(false);
+      setContinueStart(null);
+      setContinueElapsed(0);
     }
   }, [feeding]);
 
+  // Timer pour la continuation
+  useEffect(() => {
+    let interval: NodeJS.Timer | undefined;
+    if (isContinuing && continueStart) {
+      interval = setInterval(() => {
+        const now = Date.now();
+        const diffSec = Math.floor((now - continueStart.getTime()) / 1000);
+        setContinueElapsed(diffSec);
+      }, 1000);
+    } else {
+      setContinueElapsed(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isContinuing, continueStart]);
+
   if (!feeding) return null;
 
-  const handleSave = () => {
+  const handleSaveMeta = () => {
     let quantityNumber: number | undefined = undefined;
 
     if (type === 'bottle') {
@@ -66,11 +90,64 @@ function EditFeedingModal({ visible, feeding, onClose, onSave }: EditFeedingModa
     onClose();
   };
 
+  const handleStartContinue = () => {
+    setContinueStart(new Date());
+    setIsContinuing(true);
+  };
+
+  const handleStopContinue = () => {
+    if (!continueStart || !feeding) {
+      setIsContinuing(false);
+      return;
+    }
+
+    const end = new Date();
+    const extraMs = end.getTime() - continueStart.getTime();
+    const extraMinutes = Math.round(extraMs / 60000);
+
+    const newDuration = (feeding.durationMinutes || 0) + extraMinutes;
+
+    const updated: Feeding = {
+      ...feeding,
+      // on considère la nouvelle fin comme maintenant
+      endTime: end.toISOString(),
+      durationMinutes: newDuration,
+      type,
+      quantityMl: type === 'bottle' && quantity ? parseInt(quantity, 10) || undefined : feeding.quantityMl,
+    };
+
+    onSave(updated);
+    setIsContinuing(false);
+    setContinueStart(null);
+    setContinueElapsed(0);
+    onClose();
+  };
+
+  const formatSecondsToMinSec = (sec: number): string => {
+    const total = Math.max(0, sec);
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${minutes} min ${seconds.toString().padStart(2, '0')} s`;
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Modifier la tétée</Text>
+
+          {/* Infos de base : début / fin / durée actuelle */}
+          <Text style={styles.modalInfo}>
+            Début : {formatDateTime(new Date(feeding.startTime))}
+          </Text>
+          <Text style={styles.modalInfo}>
+            Fin : {formatDateTime(new Date(feeding.endTime))}
+          </Text>
+          <Text style={styles.modalInfo}>
+            Durée actuelle : {feeding.durationMinutes} min
+          </Text>
+
+          <View style={styles.modalSeparator} />
 
           <Text style={styles.modalLabel}>Type</Text>
           <View style={styles.typeRow}>
@@ -128,12 +205,40 @@ function EditFeedingModal({ visible, feeding, onClose, onSave }: EditFeedingModa
             </>
           )}
 
+          <View style={styles.modalSeparator} />
+
+          {/* Bloc continuation */}
+          <Text style={styles.modalLabel}>Continuer cette tétée</Text>
+          {!isContinuing ? (
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalContinueButton]}
+              onPress={handleStartContinue}
+            >
+              <Text style={styles.modalContinueText}>Démarrer la continuation</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.continueContainer}>
+              <Text style={styles.modalInfo}>
+                Temps continuation : {formatSecondsToMinSec(continueElapsed)}
+              </Text>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalSave]}
+                onPress={handleStopContinue}
+              >
+                <Text style={styles.modalSaveText}>Arrêter et ajouter au temps</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View style={styles.modalButtonsRow}>
             <TouchableOpacity style={[styles.modalButton, styles.modalCancel]} onPress={onClose}>
-              <Text style={styles.modalCancelText}>Annuler</Text>
+              <Text style={styles.modalCancelText}>Fermer</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalButton, styles.modalSave]} onPress={handleSave}>
-              <Text style={styles.modalSaveText}>Enregistrer</Text>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalSave]}
+              onPress={handleSaveMeta}
+            >
+              <Text style={styles.modalSaveText}>Sauvegarder les infos</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -145,7 +250,6 @@ function EditFeedingModal({ visible, feeding, onClose, onSave }: EditFeedingModa
 export default function HistoryScreen() {
   const { feedings, deleteFeeding, updateFeeding } = useFeeding();
   const [activeFilter, setActiveFilter] = useState<FilterType>('today');
-
   const [editingFeeding, setEditingFeeding] = useState<Feeding | null>(null);
   const [isEditModalVisible, setEditModalVisible] = useState(false);
 
@@ -169,6 +273,32 @@ export default function HistoryScreen() {
     if (filter === 'yesterday') return 'Yesterday';
     return 'Last 7 days';
   };
+
+  // Moyenne de l’intervalle entre tétées (en secondes)
+  const computeAverageIntervalSeconds = (list: Feeding[]): number => {
+    if (list.length < 2) return 0;
+    const sorted = [...list].sort(
+      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+    let sum = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = new Date(sorted[i - 1].startTime).getTime();
+      const curr = new Date(sorted[i].startTime).getTime();
+      sum += (curr - prev) / 1000; // secondes
+    }
+    return sum / (sorted.length - 1);
+  };
+
+  const formatSecondsToMinSec = (sec: number): string => {
+    if (!sec || sec <= 0) return '–';
+    const total = Math.round(sec);
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${minutes} min ${seconds.toString().padStart(2, '0')} s`;
+  };
+
+  const avgIntervalSec = computeAverageIntervalSeconds(filteredFeedings);
+  const avgIntervalLabel = formatSecondsToMinSec(avgIntervalSec);
 
   const handleEditPress = (feeding: Feeding) => {
     setEditingFeeding(feeding);
@@ -214,7 +344,13 @@ export default function HistoryScreen() {
           </View>
         </View>
 
-        <Text style={styles.feedingTime}>{formatDateTime(new Date(feeding.endTime))}</Text>
+        {/* Début + fin */}
+        <Text style={styles.feedingTime}>
+          Début : {formatDateTime(new Date(feeding.startTime))}
+        </Text>
+        <Text style={styles.feedingTime}>
+          Fin : {formatDateTime(new Date(feeding.endTime))}
+        </Text>
 
         {feeding.quantityMl && (
           <View style={styles.quantityContainer}>
@@ -224,7 +360,7 @@ export default function HistoryScreen() {
         )}
       </View>
 
-      {/* 👉 Boutons Modifier / Supprimer bien visibles */}
+      {/* Boutons Edit / Delete */}
       <View style={styles.actionContainer}>
         <TouchableOpacity
           style={[styles.actionButton, styles.editButton]}
@@ -291,6 +427,9 @@ export default function HistoryScreen() {
           {filteredFeedings.length} feeding
           {filteredFeedings.length !== 1 ? 's' : ''}
         </Text>
+        <Text style={styles.totalAverage}>
+          Average interval between feedings: {avgIntervalLabel}
+        </Text>
       </View>
 
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
@@ -335,7 +474,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    gap: 8,
   },
   filterButton: {
     flex: 1,
@@ -344,6 +482,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#E2E8F0',
     alignItems: 'center',
+    marginRight: 8,
   },
   filterButtonActive: {
     backgroundColor: '#A0D8B3',
@@ -378,6 +517,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#A0AEC0',
     marginTop: 8,
+  },
+  totalAverage: {
+    fontSize: 14,
+    color: '#718096',
+    marginTop: 4,
   },
   list: {
     flex: 1,
@@ -415,16 +559,16 @@ const styles = StyleSheet.create({
   durationBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#F7FAFC',
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 8,
+    backgroundColor: '#F7FAFC',
   },
   durationText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#718096',
+    marginLeft: 4,
   },
   feedingTime: {
     fontSize: 14,
@@ -433,24 +577,24 @@ const styles = StyleSheet.create({
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
     marginTop: 8,
   },
   quantityText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#4299E1',
+    marginLeft: 4,
   },
   actionContainer: {
     paddingRight: 10,
-    justifyContent: 'center',
     alignItems: 'flex-end',
-    gap: 6,
+    justifyContent: 'center',
   },
   actionButton: {
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 8,
+    marginVertical: 2,
   },
   editButton: {
     backgroundColor: '#EDF2F7',
@@ -489,8 +633,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#2D3748',
-    marginBottom: 16,
+    marginBottom: 12,
     textAlign: 'center',
+  },
+  modalInfo: {
+    fontSize: 13,
+    color: '#4A5568',
+  },
+  modalSeparator: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 12,
   },
   modalLabel: {
     fontSize: 14,
@@ -500,9 +653,7 @@ const styles = StyleSheet.create({
   },
   typeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 16,
-    gap: 8,
   },
   typeButton: {
     flex: 1,
@@ -510,6 +661,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#E2E8F0',
     alignItems: 'center',
+    marginRight: 6,
   },
   typeButtonActive: {
     backgroundColor: '#A0D8B3',
@@ -533,12 +685,13 @@ const styles = StyleSheet.create({
   modalButtonsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 8,
+    marginTop: 16,
   },
   modalButton: {
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderRadius: 10,
+    marginLeft: 8,
   },
   modalCancel: {
     backgroundColor: '#E2E8F0',
@@ -553,5 +706,16 @@ const styles = StyleSheet.create({
   modalSaveText: {
     fontWeight: '600',
     color: '#2D3748',
+  },
+  modalContinueButton: {
+    backgroundColor: '#EDF2F7',
+    marginTop: 4,
+  },
+  modalContinueText: {
+    fontWeight: '600',
+    color: '#2D3748',
+  },
+  continueContainer: {
+    marginTop: 4,
   },
 });
