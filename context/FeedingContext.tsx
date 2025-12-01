@@ -45,6 +45,12 @@ export function FeedingProvider({ children }: { children: React.ReactNode }) {
         const lastFeeding = loadedFeedings[0];
         const nextTime = calculateNextFeedingTime(lastFeeding.endTime, loadedSettings.intervalMinutes);
         setNextFeedingTime(nextTime);
+
+        const adjustedTime = adjustForNightMode(nextTime, loadedSettings.nightNotificationsEnabled);
+        if (adjustedTime.getTime() > Date.now()) {
+          const suggestedSide = getNextSuggestedSide(loadedLastSide);
+          await notificationService.startCountdownUpdates(adjustedTime, suggestedSide);
+        }
       }
 
       await notificationService.requestPermissions();
