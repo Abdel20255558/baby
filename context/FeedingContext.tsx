@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Feeding, Settings, ActiveSession } from '@/types/feeding';
 import { storageService, defaultSettings } from '@/utils/storage';
-import { calculateNextFeedingTime, getNextSuggestedSide, adjustForNightMode } from '@/utils/calculations';
+import {
+  calculateNextFeedingTime,
+  getNextSuggestedSide,
+  adjustForNightMode,
+} from '@/utils/calculations';
 import { notificationService } from '@/utils/notifications';
 
 interface FeedingContextType {
@@ -43,9 +47,11 @@ export function FeedingProvider({ children }: { children: React.ReactNode }) {
       setActiveSession(loadedSession);
       setLastSide(loadedLastSide);
 
+      // ⏱️ Recalcule prochaine tétée à partir de l’HEURE DE DÉBUT
       if (loadedFeedings.length > 0 && !loadedSession) {
         const lastFeeding = loadedFeedings[0];
-        const nextTime = calculateNextFeedingTime(lastFeeding.endTime, loadedSettings.intervalMinutes);
+        const baseTime = lastFeeding.startTime || lastFeeding.endTime;
+        const nextTime = calculateNextFeedingTime(baseTime, loadedSettings.intervalMinutes);
         setNextFeedingTime(nextTime);
 
         const adjustedTime = adjustForNightMode(nextTime, loadedSettings.nightNotificationsEnabled);
@@ -88,9 +94,9 @@ export function FeedingProvider({ children }: { children: React.ReactNode }) {
     if (!activeSession) return;
 
     const endTime = new Date().toISOString();
-    const startTime = new Date(activeSession.startTime).getTime();
-    const end = new Date(endTime).getTime();
-    const durationMinutes = Math.round((end - startTime) / (1000 * 60));
+    const startTimeMs = new Date(activeSession.startTime).getTime();
+    const endTimeMs = new Date(endTime).getTime();
+    const durationMinutes = Math.round((endTimeMs - startTimeMs) / (1000 * 60));
 
     const feeding: Feeding = {
       id: Date.now().toString(),
@@ -107,7 +113,8 @@ export function FeedingProvider({ children }: { children: React.ReactNode }) {
     setActiveSession(null);
     await storageService.saveActiveSession(null);
 
-    const nextTime = calculateNextFeedingTime(endTime, settings.intervalMinutes);
+    // ✅ Prochaine tétée calculée depuis l’heure de DÉBUT
+    const nextTime = calculateNextFeedingTime(activeSession.startTime, settings.intervalMinutes);
     setNextFeedingTime(nextTime);
 
     const adjustedTime = adjustForNightMode(nextTime, settings.nightNotificationsEnabled);
@@ -121,7 +128,8 @@ export function FeedingProvider({ children }: { children: React.ReactNode }) {
 
     if (feedings.length > 0 && !activeSession) {
       const lastFeeding = feedings[0];
-      const nextTime = calculateNextFeedingTime(lastFeeding.endTime, newSettings.intervalMinutes);
+      const baseTime = lastFeeding.startTime || lastFeeding.endTime;
+      const nextTime = calculateNextFeedingTime(baseTime, newSettings.intervalMinutes);
       setNextFeedingTime(nextTime);
 
       const adjustedTime = adjustForNightMode(nextTime, newSettings.nightNotificationsEnabled);
@@ -167,9 +175,7 @@ export function FeedingProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useFeeding() {
-  const context = useContext(FeedingContext);
-  if (!context) {
-    throw new Error('useFeeding must be used within FeedingProvider');
-  }
-  return context;
+  const ctx = useContext(FeedingContext);
+  if (!ctx) throw new Error('useFeeding must be used within FeedingProvider');
+  return ctx;
 }
