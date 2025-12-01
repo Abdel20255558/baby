@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { Baby, Droplet } from 'lucide-react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking } from 'react-native';
+import { Baby, Droplet, Bell, BellOff } from 'lucide-react-native';
+import * as Notifications from 'expo-notifications';
 import { useFeeding } from '@/context/FeedingContext';
 import { FeedingTimer } from '@/components/FeedingTimer';
 import { CountdownTimer } from '@/components/CountdownTimer';
@@ -10,6 +11,33 @@ import { calculateBabyAge, formatBabyAge, formatTime, getNextSuggestedSide } fro
 export default function HomeScreen() {
   const { feedings, settings, activeSession, lastSide, nextFeedingTime, startFeeding, stopFeeding } = useFeeding();
   const [showBottleModal, setShowBottleModal] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  useEffect(() => {
+    checkNotificationPermissions();
+  }, []);
+
+  const checkNotificationPermissions = async () => {
+    const { status } = await Notifications.getPermissionsAsync();
+    setNotificationsEnabled(status === 'granted');
+  };
+
+  const handleEnableNotifications = async () => {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status === 'denied') {
+      Alert.alert(
+        'Notifications Disabled',
+        'Please enable notifications in your device settings to receive feeding reminders.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+    } else {
+      const { status: newStatus } = await Notifications.requestPermissionsAsync();
+      setNotificationsEnabled(newStatus === 'granted');
+    }
+  };
 
   const babyAge = calculateBabyAge(settings.babyBirthDate);
   const lastFeeding = feedings[0];
@@ -48,6 +76,19 @@ export default function HomeScreen() {
             <Text style={styles.babyAge}>{formatBabyAge(babyAge)}</Text>
           </View>
         </View>
+
+        {!notificationsEnabled && (
+          <TouchableOpacity
+            style={styles.notificationBanner}
+            onPress={handleEnableNotifications}
+          >
+            <BellOff size={20} color="#C05621" strokeWidth={2.5} />
+            <View style={styles.notificationBannerContent}>
+              <Text style={styles.notificationBannerTitle}>Notifications Disabled</Text>
+              <Text style={styles.notificationBannerText}>Tap to enable feeding reminders</Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
       {activeSession ? (
@@ -165,6 +206,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#718096',
     marginTop: 2,
+  },
+  notificationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5EB',
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#FBD38D',
+    gap: 12,
+  },
+  notificationBannerContent: {
+    flex: 1,
+  },
+  notificationBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#C05621',
+    marginBottom: 2,
+  },
+  notificationBannerText: {
+    fontSize: 12,
+    color: '#9C4221',
   },
   activeSession: {
     backgroundColor: '#FFFFFF',
