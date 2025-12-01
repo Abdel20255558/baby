@@ -9,7 +9,16 @@ import { BottleQuantityModal } from '@/components/BottleQuantityModal';
 import { calculateBabyAge, formatBabyAge, formatTime, getNextSuggestedSide } from '@/utils/calculations';
 
 export default function HomeScreen() {
-  const { feedings, settings, activeSession, lastSide, nextFeedingTime, startFeeding, stopFeeding } = useFeeding();
+  const {
+    feedings,
+    settings,
+    activeSession,
+    lastSide,
+    nextFeedingTime,
+    startFeeding,
+    stopFeeding,
+  } = useFeeding();
+
   const [showBottleModal, setShowBottleModal] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -112,11 +121,15 @@ export default function HomeScreen() {
           {lastFeeding && (
             <View style={styles.infoCard}>
               <Text style={styles.infoLabel}>Last Feeding</Text>
+
+              {/* ⏱️ Ligne principale : heure début → heure fin */}
               <Text style={styles.infoValue}>
-                {formatTime(new Date(lastFeeding.endTime))}
+                {formatTime(new Date(lastFeeding.startTime))} - {formatTime(new Date(lastFeeding.endTime))}
               </Text>
+
+              {/* Type + temps total de tétée (inclut continuation si tu as ajouté du temps) */}
               <Text style={styles.infoSubtext}>
-                {getFeedingTypeLabel(lastFeeding.type)} • {lastFeeding.durationMinutes} min
+                {getFeedingTypeLabel(lastFeeding.type)} • Total {lastFeeding.durationMinutes} min
               </Text>
             </View>
           )}
@@ -278,7 +291,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   infoValue: {
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: '700',
     color: '#2D3748',
   },
